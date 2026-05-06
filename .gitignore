@@ -1,0 +1,6 @@
+.venv/
+__pycache__/
+*.pt
+# Ignore all outputs EXCEPT the final result you want to show
+data/output/*
+!data/output/annotated_result.mp4
