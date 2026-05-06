@@ -18,7 +18,7 @@ This project implements a robust computer vision pipeline designed to detect and
 *   **Vision Processing:** OpenCV, NumPy
 *   **Tracking Algorithms:** BoT-SORT / ByteTrack
 *   **Infrastructure:** Developed and tested on **Antigravity.ai** (Cloud GPU Environment)
-
+## live demo : https://sports-tracking-ai-gy92szzeaqmwjp5ytqfihi.streamlit.app/
 ## Repository Structure
 ```text
 sports-tracking-ai/
