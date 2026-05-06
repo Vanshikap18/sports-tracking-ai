@@ -4,14 +4,12 @@ import os
 import tempfile
 import sys
 
-# Ensure the 'src' directory is in the system path
 sys.path.append(os.getcwd())
 sys.path.append(os.path.join(os.getcwd(), 'src'))
 
 from tracker import SportsTracker
 from utils import get_video_properties, create_video_writer
 
-# Professional Dark & Purple Theme Injection
 st.set_page_config(page_title="AI Sports Tracker", layout="wide")
 
 st.markdown("""
@@ -50,13 +48,11 @@ st.markdown("""
 st.title(" AI Sports Tracker: Pro Dashboard")
 st.markdown("Advanced Multi-Object Tracking with **YOLOv8** and **BoT-SORT**.")
 
-# Sidebar Configuration
 st.sidebar.header("Configuration")
 conf_threshold = st.sidebar.slider("Confidence Threshold", 0.1, 1.0, 0.3)
 uploaded_file = st.sidebar.file_uploader("Upload Video File", type=['mp4', 'avi', 'mov'])
 
 if uploaded_file is not None:
-    # Use a temporary file for the uploaded input
     tfile = tempfile.NamedTemporaryFile(delete=False) 
     tfile.write(uploaded_file.read())
     
@@ -75,11 +71,9 @@ if uploaded_file is not None:
             cap = cv2.VideoCapture(tfile.name)
             width, height, fps = get_video_properties(cap)
             
-            # Ensure output directory exists
             os.makedirs("data/output", exist_ok=True)
             output_path = "data/output/web_result.mp4"
             
-            # Cleanup old results to prevent storage errors
             if os.path.exists(output_path):
                 os.remove(output_path)
                 
@@ -104,14 +98,11 @@ if uploaded_file is not None:
             cap.release()
             writer.release()
             
-            # --- THE FIX STARTS HERE ---
             status_text.success("Analysis Complete!")
             
-            # Read the file as binary to bypass MediaFileStorageError
             if os.path.exists(output_path):
                 with open(output_path, 'rb') as v_file:
                     video_bytes = v_file.read()
                 st.video(video_bytes)
             else:
                 st.error("Error: Could not find the processed video file.")
-            # --- THE FIX ENDS HERE ---
