@@ -58,9 +58,9 @@ conf_threshold = st.sidebar.slider("Confidence Threshold", 0.1, 1.0, 0.3)
 uploaded_file = st.sidebar.file_uploader("Upload Video File", type=['mp4', 'avi', 'mov'])
 
 if uploaded_file is not None:
-    # Use a unique ID for this specific upload to prevent cache collisions
-    unique_id = str(uuid.uuid4())[:8]
-    input_path = os.path.join(tempfile.gettempdir(), f"input_{unique_id}.mp4")
+    # Use a unique ID for this session
+    unique_id = uuid.uuid4().hex[:8]
+    input_path = os.path.join(tempfile.gettempdir(), f"in_{unique_id}.mp4")
     
     with open(input_path, "wb") as f:
         f.write(uploaded_file.getbuffer())
@@ -80,9 +80,10 @@ if uploaded_file is not None:
             cap = cv2.VideoCapture(input_path)
             width, height, fps = get_video_properties(cap)
             
-            # Create a unique output path
-            output_path = os.path.join(tempfile.gettempdir(), f"output_{unique_id}.mp4")
+            # Create a unique output path using hex to ensure clean naming
+            output_path = os.path.join(tempfile.gettempdir(), f"out_{unique_id}.mp4")
             
+            # Ensure the handle is managed carefully
             writer = create_video_writer(output_path, fps, (width, height))
             tracker = SportsTracker()
             total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -101,21 +102,25 @@ if uploaded_file is not None:
                     progress_bar.progress(frame_idx / total_frames)
                     status_text.text(f"Analyzing: Frame {frame_idx}/{total_frames}")
             finally:
-                # CRITICAL: Always release handles even if processing fails
-                cap.release()
+                # CRITICAL: Always release handles immediately to unlock the file
                 writer.release()
+                cap.release()
             
-            # Small delay to ensure the file system has finalized the .mp4 file
+            # Give the OS extra time to finalize the file write
             time.sleep(2)
             
-            if os.path.exists(output_path):
+            # Verify file existence AND size before proceeding
+            if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
                 status_text.success("Analysis Complete!")
                 with open(output_path, 'rb') as v_file:
                     video_bytes = v_file.read()
                 st.video(video_bytes, format="video/mp4")
                 
-                # Cleanup to save server space
-                os.remove(input_path)
-                os.remove(output_path)
+                # Cleanup to maintain server health
+                try:
+                    os.remove(input_path)
+                    os.remove(output_path)
+                except:
+                    pass
             else:
-                st.error("Error: The processed video could not be generated. Please try a shorter clip.")
+                st.error(f"Technical Error: File generated at {output_path} is empty or missing.")
