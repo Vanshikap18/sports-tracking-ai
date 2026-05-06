@@ -4,6 +4,7 @@ import os
 import tempfile
 import sys
 
+# Maintain system paths for module discovery
 sys.path.append(os.getcwd())
 sys.path.append(os.path.join(os.getcwd(), 'src'))
 
@@ -12,6 +13,7 @@ from utils import get_video_properties, create_video_writer
 
 st.set_page_config(page_title="AI Sports Tracker", layout="wide")
 
+# Theme styling
 st.markdown("""
     <style>
     .stApp {
@@ -53,6 +55,7 @@ conf_threshold = st.sidebar.slider("Confidence Threshold", 0.1, 1.0, 0.3)
 uploaded_file = st.sidebar.file_uploader("Upload Video File", type=['mp4', 'avi', 'mov'])
 
 if uploaded_file is not None:
+    # Input temporary file
     tfile = tempfile.NamedTemporaryFile(delete=False) 
     tfile.write(uploaded_file.read())
     
@@ -71,11 +74,10 @@ if uploaded_file is not None:
             cap = cv2.VideoCapture(tfile.name)
             width, height, fps = get_video_properties(cap)
             
-            os.makedirs("data/output", exist_ok=True)
-            output_path = "data/output/web_result.mp4"
-            
-            if os.path.exists(output_path):
-                os.remove(output_path)
+            # Use a NamedTemporaryFile for output to ensure cloud write permissions
+            out_tfile = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
+            output_path = out_tfile.name
+            out_tfile.close() # Close handle so OpenCV can write to it
                 
             writer = create_video_writer(output_path, fps, (width, height))
             
@@ -100,9 +102,12 @@ if uploaded_file is not None:
             
             status_text.success("Analysis Complete!")
             
+            # Final output via binary stream
             if os.path.exists(output_path):
                 with open(output_path, 'rb') as v_file:
                     video_bytes = v_file.read()
                 st.video(video_bytes)
+                # Cleanup temp file after displaying
+                os.remove(output_path)
             else:
                 st.error("Error: Could not find the processed video file.")
