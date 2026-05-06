@@ -4,6 +4,7 @@ import os
 import tempfile
 import sys
 import time
+import uuid
 
 # Maintain system paths for module discovery
 sys.path.append(os.getcwd())
@@ -57,10 +58,12 @@ conf_threshold = st.sidebar.slider("Confidence Threshold", 0.1, 1.0, 0.3)
 uploaded_file = st.sidebar.file_uploader("Upload Video File", type=['mp4', 'avi', 'mov'])
 
 if uploaded_file is not None:
-    # Use a fixed temp location for the input to ensure read permissions
-    input_path = os.path.join(tempfile.gettempdir(), "input_video.mp4")
+    # Use a unique ID for this specific upload to prevent cache collisions
+    unique_id = str(uuid.uuid4())[:8]
+    input_path = os.path.join(tempfile.gettempdir(), f"input_{unique_id}.mp4")
+    
     with open(input_path, "wb") as f:
-        f.write(uploaded_file.read())
+        f.write(uploaded_file.getbuffer())
     
     col1, col2 = st.columns(2)
     
@@ -77,47 +80,42 @@ if uploaded_file is not None:
             cap = cv2.VideoCapture(input_path)
             width, height, fps = get_video_properties(cap)
             
-            # Use a fixed temp location for the output
-            output_path = os.path.join(tempfile.gettempdir(), "output_processed.mp4")
+            # Create a unique output path
+            output_path = os.path.join(tempfile.gettempdir(), f"output_{unique_id}.mp4")
             
-            # Pre-emptive cleanup of old results
-            if os.path.exists(output_path):
-                try:
-                    os.remove(output_path)
-                except:
-                    pass
-                
             writer = create_video_writer(output_path, fps, (width, height))
-            
             tracker = SportsTracker()
             total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
             
             frame_idx = 0
-            while cap.isOpened():
-                success, frame = cap.read()
-                if not success:
-                    break
-                
-                processed_frame = tracker.process_frame(frame)
-                writer.write(processed_frame)
-                
-                frame_idx += 1
-                progress_bar.progress(frame_idx / total_frames)
-                status_text.text(f"Analyzing: Frame {frame_idx}/{total_frames}")
+            try:
+                while cap.isOpened():
+                    success, frame = cap.read()
+                    if not success:
+                        break
+                    
+                    processed_frame = tracker.process_frame(frame)
+                    writer.write(processed_frame)
+                    
+                    frame_idx += 1
+                    progress_bar.progress(frame_idx / total_frames)
+                    status_text.text(f"Analyzing: Frame {frame_idx}/{total_frames}")
+            finally:
+                # CRITICAL: Always release handles even if processing fails
+                cap.release()
+                writer.release()
             
-            # CRITICAL: Close handles immediately to unlock the file for reading
-            cap.release()
-            writer.release()
+            # Small delay to ensure the file system has finalized the .mp4 file
+            time.sleep(2)
             
-            # Small delay to ensure OS file buffers are flushed
-            time.sleep(1)
-            
-            status_text.success("Analysis Complete!")
-            
-            # Read and display as binary stream with explicit format to fix "not playing" error
             if os.path.exists(output_path):
+                status_text.success("Analysis Complete!")
                 with open(output_path, 'rb') as v_file:
                     video_bytes = v_file.read()
                 st.video(video_bytes, format="video/mp4")
+                
+                # Cleanup to save server space
+                os.remove(input_path)
+                os.remove(output_path)
             else:
-                st.error("Error: Could not find the processed video file.")
+                st.error("Error: The processed video could not be generated. Please try a shorter clip.")
