@@ -5,6 +5,7 @@ import tempfile
 import sys
 
 # Ensure the 'src' directory is in the system path
+sys.path.append(os.getcwd())
 sys.path.append(os.path.join(os.getcwd(), 'src'))
 
 from tracker import SportsTracker
@@ -15,28 +16,20 @@ st.set_page_config(page_title="AI Sports Tracker", layout="wide")
 
 st.markdown("""
     <style>
-    /* Main background */
     .stApp {
         background-color: #0E1117;
         color: #FFFFFF;
     }
-    
-    /* Sidebar styling */
     [data-testid="stSidebar"] {
         background-color: #161B22;
         border-right: 2px solid #7D4CDB;
     }
-
-    /* Force visibility for ALL labels and text descriptions */
     label, p, .stMarkdown, [data-testid="stWidgetLabel"] {
         color: #FFFFFF !important;
     }
-
-    /* SPECIFIC FIX: Button text visibility */
     .stButton>button p {
         color: #FFFFFF !important;
     }
-    
     .stButton>button {
         background-color: #7D4CDB;
         color: #FFFFFF !important;
@@ -45,13 +38,9 @@ st.markdown("""
         border: none;
         height: 3em;
     }
-
-    /* Success and Status messages visibility */
     .stAlert p, .stText p {
         color: #FFFFFF !important;
     }
-
-    /* Titles */
     h1, h2, h3 {
         color: #9B6DFF !important;
     }
@@ -67,6 +56,7 @@ conf_threshold = st.sidebar.slider("Confidence Threshold", 0.1, 1.0, 0.3)
 uploaded_file = st.sidebar.file_uploader("Upload Video File", type=['mp4', 'avi', 'mov'])
 
 if uploaded_file is not None:
+    # Use a temporary file for the uploaded input
     tfile = tempfile.NamedTemporaryFile(delete=False) 
     tfile.write(uploaded_file.read())
     
@@ -85,8 +75,14 @@ if uploaded_file is not None:
             cap = cv2.VideoCapture(tfile.name)
             width, height, fps = get_video_properties(cap)
             
-            # Using a consistent output name
+            # Ensure output directory exists
+            os.makedirs("data/output", exist_ok=True)
             output_path = "data/output/web_result.mp4"
+            
+            # Cleanup old results to prevent storage errors
+            if os.path.exists(output_path):
+                os.remove(output_path)
+                
             writer = create_video_writer(output_path, fps, (width, height))
             
             tracker = SportsTracker()
@@ -108,6 +104,14 @@ if uploaded_file is not None:
             cap.release()
             writer.release()
             
-            # Final visualization without download button
+            # --- THE FIX STARTS HERE ---
             status_text.success("Analysis Complete!")
-            st.video(output_path)
+            
+            # Read the file as binary to bypass MediaFileStorageError
+            if os.path.exists(output_path):
+                with open(output_path, 'rb') as v_file:
+                    video_bytes = v_file.read()
+                st.video(video_bytes)
+            else:
+                st.error("Error: Could not find the processed video file.")
+            # --- THE FIX ENDS HERE ---
