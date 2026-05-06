@@ -11,7 +11,7 @@ sys.path.append(os.getcwd())
 sys.path.append(os.path.join(os.getcwd(), 'src'))
 
 from tracker import SportsTracker
-from utils import get_video_properties, create_video_writer
+from utils import get_video_properties
 
 # Professional Dark & Purple Theme Injection
 st.set_page_config(page_title="AI Sports Tracker", layout="wide")
@@ -80,11 +80,14 @@ if uploaded_file is not None:
             cap = cv2.VideoCapture(input_path)
             width, height, fps = get_video_properties(cap)
             
-            # Create a unique output path using hex to ensure clean naming
-            output_path = os.path.join(tempfile.gettempdir(), f"out_{unique_id}.mp4")
+            # 1. FIX: Ensure dimensions are integers and consistent
+            frame_size = (int(width), int(height))
             
-            # Ensure the handle is managed carefully
-            writer = create_video_writer(output_path, fps, (width, height))
+            # 2. FIX: Use 'mp4v' codec for maximum compatibility on Linux Cloud servers
+            output_path = os.path.join(tempfile.gettempdir(), f"out_{unique_id}.mp4")
+            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+            writer = cv2.VideoWriter(output_path, fourcc, fps, frame_size)
+            
             tracker = SportsTracker()
             total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
             
@@ -96,17 +99,25 @@ if uploaded_file is not None:
                         break
                     
                     processed_frame = tracker.process_frame(frame)
+                    
+                    # 3. FIX: Force resize processed frame to match writer dimensions
+                    # This prevents 0-byte files if the tracker alters dimensions
+                    if (processed_frame.shape[1], processed_frame.shape[0]) != frame_size:
+                        processed_frame = cv2.resize(processed_frame, frame_size)
+                    
                     writer.write(processed_frame)
                     
                     frame_idx += 1
                     progress_bar.progress(frame_idx / total_frames)
                     status_text.text(f"Analyzing: Frame {frame_idx}/{total_frames}")
             finally:
-                # CRITICAL: Always release handles immediately to unlock the file
-                writer.release()
-                cap.release()
+                # Always release handles to unlock the file
+                if 'writer' in locals():
+                    writer.release()
+                if 'cap' in locals():
+                    cap.release()
             
-            # Give the OS extra time to finalize the file write
+            # Give the OS time to finalize the file write
             time.sleep(2)
             
             # Verify file existence AND size before proceeding
@@ -116,11 +127,11 @@ if uploaded_file is not None:
                     video_bytes = v_file.read()
                 st.video(video_bytes, format="video/mp4")
                 
-                # Cleanup to maintain server health
+                # Cleanup
                 try:
                     os.remove(input_path)
                     os.remove(output_path)
                 except:
                     pass
             else:
-                st.error(f"Technical Error: File generated at {output_path} is empty or missing.")
+                st.error(f"Technical Error: Encoder failed. Result at {output_path} is empty. Check codec support.")
