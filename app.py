@@ -55,15 +55,16 @@ conf_threshold = st.sidebar.slider("Confidence Threshold", 0.1, 1.0, 0.3)
 uploaded_file = st.sidebar.file_uploader("Upload Video File", type=['mp4', 'avi', 'mov'])
 
 if uploaded_file is not None:
-    # Input temporary file
-    tfile = tempfile.NamedTemporaryFile(delete=False) 
-    tfile.write(uploaded_file.read())
+    # Use a fixed temp location for the input
+    input_path = os.path.join(tempfile.gettempdir(), "input_video.mp4")
+    with open(input_path, "wb") as f:
+        f.write(uploaded_file.read())
     
     col1, col2 = st.columns(2)
     
     with col1:
         st.subheader("Input Stream")
-        st.video(tfile.name)
+        st.video(input_path)
     
     if st.button("Run AI Analysis"):
         with col2:
@@ -71,11 +72,11 @@ if uploaded_file is not None:
             status_text = st.empty()
             progress_bar = st.progress(0)
             
-            cap = cv2.VideoCapture(tfile.name)
+            cap = cv2.VideoCapture(input_path)
             width, height, fps = get_video_properties(cap)
             
-            # Using a fixed temporary path to ensure consistency
-            output_path = os.path.join(tempfile.gettempdir(), "final_output.mp4")
+            # Use a fixed temp location for the output
+            output_path = os.path.join(tempfile.gettempdir(), "output_processed.mp4")
             
             if os.path.exists(output_path):
                 os.remove(output_path)
@@ -103,12 +104,10 @@ if uploaded_file is not None:
             
             status_text.success("Analysis Complete!")
             
-            # Final output via binary stream with explicit MIME type
+            # Read and display as binary stream with explicit format
             if os.path.exists(output_path):
                 with open(output_path, 'rb') as v_file:
                     video_bytes = v_file.read()
                 st.video(video_bytes, format="video/mp4")
-                # Cleanup temp file after displaying
-                os.remove(output_path)
             else:
                 st.error("Error: Could not find the processed video file.")
