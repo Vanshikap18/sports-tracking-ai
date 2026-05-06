@@ -5,6 +5,7 @@ import tempfile
 import sys
 import time
 import uuid
+import subprocess
 
 # Maintain system paths for module discovery
 sys.path.append(os.getcwd())
@@ -18,34 +19,11 @@ st.set_page_config(page_title="AI Sports Tracker", layout="wide")
 
 st.markdown("""
     <style>
-    .stApp {
-        background-color: #0E1117;
-        color: #FFFFFF;
-    }
-    [data-testid="stSidebar"] {
-        background-color: #161B22;
-        border-right: 2px solid #7D4CDB;
-    }
-    label, p, .stMarkdown, [data-testid="stWidgetLabel"] {
-        color: #FFFFFF !important;
-    }
-    .stButton>button p {
-        color: #FFFFFF !important;
-    }
-    .stButton>button {
-        background-color: #7D4CDB;
-        color: #FFFFFF !important;
-        border-radius: 8px;
-        width: 100%;
-        border: none;
-        height: 3em;
-    }
-    .stAlert p, .stText p {
-        color: #FFFFFF !important;
-    }
-    h1, h2, h3 {
-        color: #9B6DFF !important;
-    }
+    .stApp { background-color: #0E1117; color: #FFFFFF; }
+    [data-testid="stSidebar"] { background-color: #161B22; border-right: 2px solid #7D4CDB; }
+    label, p, .stMarkdown, [data-testid="stWidgetLabel"] { color: #FFFFFF !important; }
+    .stButton>button { background-color: #7D4CDB; color: #FFFFFF !important; border-radius: 8px; width: 100%; border: none; height: 3em; }
+    h1, h2, h3 { color: #9B6DFF !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -58,7 +36,6 @@ conf_threshold = st.sidebar.slider("Confidence Threshold", 0.1, 1.0, 0.3)
 uploaded_file = st.sidebar.file_uploader("Upload Video File", type=['mp4', 'avi', 'mov'])
 
 if uploaded_file is not None:
-    # Use a unique ID for this session
     unique_id = uuid.uuid4().hex[:8]
     input_path = os.path.join(tempfile.gettempdir(), f"in_{unique_id}.mp4")
     
@@ -79,14 +56,14 @@ if uploaded_file is not None:
             
             cap = cv2.VideoCapture(input_path)
             width, height, fps = get_video_properties(cap)
-            
-            # 1. FIX: Ensure dimensions are integers and consistent
             frame_size = (int(width), int(height))
             
-            # 2. FIX: Use 'mp4v' codec for maximum compatibility on Linux Cloud servers
-            output_path = os.path.join(tempfile.gettempdir(), f"out_{unique_id}.mp4")
+            # Temporary paths
+            temp_output = os.path.join(tempfile.gettempdir(), f"raw_{unique_id}.mp4")
+            final_output = os.path.join(tempfile.gettempdir(), f"final_{unique_id}.mp4")
+            
             fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-            writer = cv2.VideoWriter(output_path, fourcc, fps, frame_size)
+            writer = cv2.VideoWriter(temp_output, fourcc, fps, frame_size)
             
             tracker = SportsTracker()
             total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -95,43 +72,35 @@ if uploaded_file is not None:
             try:
                 while cap.isOpened():
                     success, frame = cap.read()
-                    if not success:
-                        break
+                    if not success: break
                     
                     processed_frame = tracker.process_frame(frame)
                     
-                    # 3. FIX: Force resize processed frame to match writer dimensions
-                    # This prevents 0-byte files if the tracker alters dimensions
                     if (processed_frame.shape[1], processed_frame.shape[0]) != frame_size:
                         processed_frame = cv2.resize(processed_frame, frame_size)
                     
                     writer.write(processed_frame)
-                    
                     frame_idx += 1
                     progress_bar.progress(frame_idx / total_frames)
                     status_text.text(f"Analyzing: Frame {frame_idx}/{total_frames}")
             finally:
-                # Always release handles to unlock the file
-                if 'writer' in locals():
-                    writer.release()
-                if 'cap' in locals():
-                    cap.release()
+                if 'writer' in locals(): writer.release()
+                if 'cap' in locals(): cap.release()
             
-            # Give the OS time to finalize the file write
-            time.sleep(2)
+            # --- WEB COMPATIBILITY FIX (FFMPEG) ---
+            status_text.text("Optimizing video for web playback...")
+            # This converts the 'mp4v' file to 'h264' so the browser can play it
+            conversion_cmd = f"ffmpeg -i {temp_output} -vcodec libx264 -crf 25 -preset fast {final_output} -y"
+            subprocess.run(conversion_cmd, shell=True, capture_output=True)
             
-            # Verify file existence AND size before proceeding
-            if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+            if os.path.exists(final_output) and os.path.getsize(final_output) > 0:
                 status_text.success("Analysis Complete!")
-                with open(output_path, 'rb') as v_file:
-                    video_bytes = v_file.read()
-                st.video(video_bytes, format="video/mp4")
+                with open(final_output, 'rb') as v_file:
+                    st.video(v_file.read())
                 
                 # Cleanup
-                try:
-                    os.remove(input_path)
-                    os.remove(output_path)
-                except:
-                    pass
+                os.remove(input_path)
+                os.remove(temp_output)
+                os.remove(final_output)
             else:
-                st.error(f"Technical Error: Encoder failed. Result at {output_path} is empty. Check codec support.")
+                st.error("Error: Video conversion failed. Please try again.")
