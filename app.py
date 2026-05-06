@@ -74,10 +74,11 @@ if uploaded_file is not None:
             cap = cv2.VideoCapture(tfile.name)
             width, height, fps = get_video_properties(cap)
             
-            # Use a NamedTemporaryFile for output to ensure cloud write permissions
-            out_tfile = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
-            output_path = out_tfile.name
-            out_tfile.close() # Close handle so OpenCV can write to it
+            # Using a fixed temporary path to ensure consistency
+            output_path = os.path.join(tempfile.gettempdir(), "final_output.mp4")
+            
+            if os.path.exists(output_path):
+                os.remove(output_path)
                 
             writer = create_video_writer(output_path, fps, (width, height))
             
@@ -102,11 +103,11 @@ if uploaded_file is not None:
             
             status_text.success("Analysis Complete!")
             
-            # Final output via binary stream
+            # Final output via binary stream with explicit MIME type
             if os.path.exists(output_path):
                 with open(output_path, 'rb') as v_file:
                     video_bytes = v_file.read()
-                st.video(video_bytes)
+                st.video(video_bytes, format="video/mp4")
                 # Cleanup temp file after displaying
                 os.remove(output_path)
             else:
